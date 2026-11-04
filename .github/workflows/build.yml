@@ -1,3 +1,4 @@
+
 name: Build EquaTube DSP APK
 
 on:
@@ -7,23 +8,28 @@ on:
       - 'EquaTubeDSP-Android-Starter.zip'
       - '.github/workflows/build.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      # 1. Download source code
+      # 1. Checkout repository
       - name: Checkout project
         uses: actions/checkout@v4
 
-      # 2. Setup Java
+      # 2. Setup Java 17
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Setup Gradle (Sudah mengaktifkan cache otomatis untuk Gradle)
+      # 3. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -32,22 +38,103 @@ jobs:
       # 4. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
 
-      # 5. Accept Android licenses
-      - name: Accept Android SDK licenses
+      # 5. Install Android SDK, NDK and CMake
+      - name: Install Android tools
+        shell: bash
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
+      # 6. Accept Android licenses
+      - name: Accept Android licenses
         shell: bash
         run: |
           set +o pipefail
           yes | sdkmanager --licenses
-          status=${PIPESTATUS[1]}
-          exit "$status"
+          exit 0
 
-      # TAMBAHAN: Menyimpan cache NDK dan CMake untuk mempercepat build selanjutnya
-      - name: Cache Android NDK & CMake
-        uses: actions/cache@v4
+      # 7. Check ZIP
+      - name: Check source ZIP
+        run: |
+          test -f EquaTubeDSP-Android-Starter.zip
+          unzip -t EquaTubeDSP-Android-Starter.zip
+
+      # 8. Extract project
+      - name: Extract project
+        run: |
+          mkdir -p project
+          unzip -q EquaTubeDSP-Android-Starter.zip -d project
+
+      # 9. Check project structure
+      - name: Check project files
+        shell: bash
+        run: |
+          cd project/EquaTubeDSP
+
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradle.properties
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/cpp/CMakeLists.txt
+          test -f app/src/main/cpp/AudioEngine.cpp
+          test -f app/src/main/cpp/native-lib.cpp
+
+          echo "Project structure OK"
+
+      # 10. Check build environment
+      - name: Check build environment
+        run: |
+          java -version
+          gradle --version
+          cmake --version
+          sdkmanager --list_installed
+
+      # 11. Build Debug APK
+      - name: Build APK
+        shell: bash
+        run: |
+          cd project/EquaTubeDSP
+
+          set -o pipefail
+
+          gradle \
+            --no-daemon \
+            --stacktrace \
+            --info \
+            --warning-mode all \
+            :app:assembleDebug \
+            2>&1 | tee build-log.txt
+
+      # 12. Check APK
+      - name: Check APK output
+        if: always()
+        run: |
+          echo "APK OUTPUT:"
+          find project/EquaTubeDSP/app/build/outputs \
+            -type f -name "*.apk" || true
+
+      # 13. Upload build log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          path: |
-            /usr/local/lib/android/sdk/ndk/27.2.12479018
-            /usr/
+          name: EquaTubeDSP-Build-Log
+          path: project/EquaTubeDSP/build-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # 14. Upload APK
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EquaTubeDSP-APK
+          path: project/EquaTubeDSP/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
