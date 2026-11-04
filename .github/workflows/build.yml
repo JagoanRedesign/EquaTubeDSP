@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   build:
-    name: Build EquaTube DSP APK
+    name: Build EquaTube DSP Internal Audio APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
       - name: Checkout repository
@@ -26,18 +26,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.13
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      # Explicit package list avoids the deprecated SDK package "tools".
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
 
-      - name: Install Android SDK components
+      - name: Install Android SDK, NDK and CMake
         shell: bash
         run: |
           set -euo pipefail
@@ -48,21 +47,16 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-      - name: Validate source archive
+      - name: Validate and extract source ZIP
         shell: bash
         run: |
           set -euo pipefail
           test -f EquaTubeDSP-Android-Starter.zip
           unzip -t EquaTubeDSP-Android-Starter.zip
-
-      - name: Extract Android project
-        shell: bash
-        run: |
-          set -euo pipefail
           mkdir -p project
           unzip -q EquaTubeDSP-Android-Starter.zip -d project
-          test -f project/EquaTubeDSP/settings.gradle.kts
-          test -f project/EquaTubeDSP/app/build.gradle.kts
+          test -f project/EquaTubeDSP/app/src/main/java/com/example/equatubedsp/MainActivity.kt
+          test -f project/EquaTubeDSP/app/src/main/cpp/AudioEngine.cpp
           test -f project/EquaTubeDSP/app/src/main/cpp/CMakeLists.txt
 
       - name: Build debug APK
@@ -70,14 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           cd project/EquaTubeDSP
-          gradle --no-daemon --stacktrace --info --warning-mode all \
-            :app:assembleDebug 2>&1 | tee build-log.txt
-
-      - name: Locate APK
-        if: always()
-        shell: bash
-        run: |
-          find project/EquaTubeDSP/app/build/outputs -type f -name '*.apk' -print || true
+          gradle --no-daemon --stacktrace --info :app:assembleDebug 2>&1 | tee build-log.txt
 
       - name: Upload build log
         if: always()
@@ -88,7 +75,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Upload debug APK
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
