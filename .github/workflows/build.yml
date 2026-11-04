@@ -1,4 +1,3 @@
-
 name: Build EquaTube DSP APK
 
 on:
@@ -13,42 +12,35 @@ permissions:
 
 jobs:
   build:
-    name: Build EquaTube DSP APK
+    name: Build EquaTube DSP Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
-
-      # 1. Checkout
-      - name: Checkout project
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Java 17
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Gradle 8.13
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      # 4. Android SDK
-      # IMPORTANT: Do not install deprecated package "tools"
+      # Explicit packages avoid the deprecated default "tools" package.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
 
-      # 5. Install Android SDK components
-      - name: Install Android tools
+      - name: Install Android SDK, NDK and CMake
         shell: bash
         run: |
           set -e
-
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-36" \
@@ -56,83 +48,37 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-          echo "Android SDK installation completed"
-
-      # 6. Verify ZIP
-      - name: Check source ZIP
-        shell: bash
+      - name: Verify source ZIP
         run: |
           set -e
-
           test -f EquaTubeDSP-Android-Starter.zip
-
           unzip -t EquaTubeDSP-Android-Starter.zip
 
-      # 7. Extract ZIP
       - name: Extract project
-        shell: bash
         run: |
           set -e
-
           mkdir -p project
-
           unzip -q EquaTubeDSP-Android-Starter.zip -d project
 
-          echo "ZIP extracted successfully"
-
-      # 8. Check project structure
-      - name: Check project files
-        shell: bash
+      - name: Check project structure
         run: |
           set -e
-
           cd project/EquaTubeDSP
-
           test -f settings.gradle.kts
           test -f build.gradle.kts
           test -f gradle.properties
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/cpp/CMakeLists.txt
+          test -f app/src/main/java/com/example/equatubedsp/MainActivity.kt
 
-          echo "Project structure OK"
-
-      # 9. Check environment
-      - name: Check Android environment
-        run: |
-          java -version
-          gradle --version
-          cmake --version
-          adb version
-          sdkmanager --list_installed
-
-      # 10. Build APK
-      - name: Build EquaTube DSP APK
+      - name: Build Debug APK
         shell: bash
         run: |
           cd project/EquaTubeDSP
-
           set -o pipefail
+          gradle --no-daemon --stacktrace --info :app:assembleDebug 2>&1 | tee build-log.txt
 
-          gradle \
-            --no-daemon \
-            --stacktrace \
-            --info \
-            --warning-mode all \
-            :app:assembleDebug \
-            2>&1 | tee build-log.txt
-
-      # 11. Check APK
-      - name: Check APK output
-        if: always()
-        shell: bash
-        run: |
-          echo "Searching APK..."
-
-          find project/EquaTubeDSP/app/build/outputs \
-            -type f -name "*.apk" || true
-
-      # 12. Upload build log
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -142,7 +88,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # 13. Upload APK
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
