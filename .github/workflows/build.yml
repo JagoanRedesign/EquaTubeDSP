@@ -13,46 +13,37 @@ permissions:
 
 jobs:
   build:
-    name: Build EquaTube DSP Android APK
+    name: Build EquaTube DSP APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
 
-      # 1. Checkout repository
+      # 1. Checkout
       - name: Checkout project
         uses: actions/checkout@v4
 
-      # 2. Setup Java 17
-      - name: Setup Java 17
+      # 2. Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Setup Gradle 8.13
+      # 3. Gradle 8.13
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      # 4. Setup Android SDK
+      # 4. Android SDK
+      # IMPORTANT: Do not install deprecated package "tools"
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
-      # 5. Accept Android SDK licenses
-      - name: Accept Android SDK licenses
-        shell: bash
-        run: |
-          set +o pipefail
-          yes | sdkmanager --licenses
-          status=${PIPESTATUS[1]}
-          if [ "$status" -ne 0 ]; then
-            echo "Checking SDK licenses..."
-          fi
-          exit 0
-
-      # 6. Install Android SDK, NDK and CMake
+      # 5. Install Android SDK components
       - name: Install Android tools
         shell: bash
         run: |
@@ -65,44 +56,37 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-          echo "Android tools installed successfully"
+          echo "Android SDK installation completed"
 
-      # 7. Verify source ZIP
+      # 6. Verify ZIP
       - name: Check source ZIP
         shell: bash
         run: |
           set -e
 
-          if [ ! -f "EquaTubeDSP-Android-Starter.zip" ]; then
-            echo "ERROR: ZIP file not found"
-            exit 1
-          fi
+          test -f EquaTubeDSP-Android-Starter.zip
 
           unzip -t EquaTubeDSP-Android-Starter.zip
 
-      # 8. Extract ZIP
-      - name: Extract project ZIP
+      # 7. Extract ZIP
+      - name: Extract project
         shell: bash
         run: |
           set -e
 
           mkdir -p project
 
-          unzip -q \
-            EquaTubeDSP-Android-Starter.zip \
-            -d project
+          unzip -q EquaTubeDSP-Android-Starter.zip -d project
 
-          echo "Project extracted successfully"
+          echo "ZIP extracted successfully"
 
-      # 9. Verify project structure
-      - name: Check project structure
+      # 8. Check project structure
+      - name: Check project files
         shell: bash
         run: |
           set -e
 
           cd project/EquaTubeDSP
-
-          echo "Checking project files..."
 
           test -f settings.gradle.kts
           test -f build.gradle.kts
@@ -113,9 +97,8 @@ jobs:
 
           echo "Project structure OK"
 
-      # 10. Check environment
+      # 9. Check environment
       - name: Check Android environment
-        shell: bash
         run: |
           java -version
           gradle --version
@@ -123,7 +106,7 @@ jobs:
           adb version
           sdkmanager --list_installed
 
-      # 11. Build APK
+      # 10. Build APK
       - name: Build EquaTube DSP APK
         shell: bash
         run: |
@@ -139,17 +122,17 @@ jobs:
             :app:assembleDebug \
             2>&1 | tee build-log.txt
 
-      # 12. Verify APK
-      - name: Verify APK output
+      # 11. Check APK
+      - name: Check APK output
         if: always()
         shell: bash
         run: |
-          echo "Searching APK files..."
+          echo "Searching APK..."
 
           find project/EquaTubeDSP/app/build/outputs \
             -type f -name "*.apk" || true
 
-      # 13. Upload build log
+      # 12. Upload build log
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,8 +142,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # 14. Upload APK
-      - name: Upload EquaTube DSP APK
+      # 13. Upload APK
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
